@@ -5,23 +5,56 @@ import type {
   JourneyPlannerParams,
   Prediction,
   LineStatus,
-  TflApiError,
 } from '@/types/tfl';
+
+const DEFAULT_STATUS_MODES = ['tube', 'bus', 'dlr', 'overground', 'tram', 'river-bus', 'cable-car'] as const;
+
+const buildModeVariants = (mode: string): string[] => {
+  const normalized = mode.trim().toLowerCase();
+  const variants = new Set<string>([normalized]);
+
+  if (normalized.includes('-')) {
+    variants.add(normalized.replace(/-/g, ''));
+  }
+
+  if (normalized.includes(' ')) {
+    variants.add(normalized.replace(/\s+/g, ''));
+  }
+
+  // Explicit mappings for known transport modes with special formatting
+  if (normalized === 'river-bus') {
+    variants.add('riverbus');
+  }
+
+  if (normalized === 'cable-car') {
+    variants.add('cablecar');
+  }
+
+  return Array.from(variants);
+};
+
+interface TflClientError extends Error {
+  status?: number;
+  isRateLimit?: boolean;
+  details?: unknown;
+}
 
 class TFLApiClient {
   private baseUrl: string;
-  private apiKey: string | undefined;
+  private primaryApiKey?: string;
+  private secondaryApiKey?: string;
   private headers: HeadersInit;
 
   constructor() {
     this.baseUrl = config.tfl.baseUrl;
-    this.apiKey = config.tfl.apiKey;
+    this.primaryApiKey = config.tfl.primaryApiKey || undefined;
+    this.secondaryApiKey = config.tfl.secondaryApiKey || undefined;
     this.headers = {
       'Content-Type': 'application/json',
     };
   }
 
-  private buildUrl(endpoint: string, params?: Record<string, any>): string {
+  private buildUrl(endpoint: string, params?: Record<string, any>, apiKey?: string): string {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     
     if (params) {
@@ -37,32 +70,166 @@ class TFLApiClient {
     }
 
     // Add API key if available
-    if (this.apiKey) {
-      url.searchParams.append('app_key', this.apiKey);
+    if (apiKey) {
+      url.searchParams.append('app_key', apiKey);
     }
 
     return url.toString();
   }
 
   private async fetchApi<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const url = this.buildUrl(endpoint, params);
+    const apiKeys = this.getApiKeysInPriorityOrder();
+    let lastError: unknown;
+
+    for (let index = 0; index < apiKeys.length; index++) {
+      const apiKey = apiKeys[index];
+
+      try {
+        return await this.requestWithKey<T>(endpoint, params, apiKey);
+      } catch (error) {
+        lastError = error;
+
+        const shouldRetry = this.shouldRetryWithNextKey(error, index, apiKeys.length);
+        if (shouldRetry) {
+          const keyLabel = index === 0 ? 'primary' : 'current';
+          console.warn(`TFL API rate limit encountered using ${keyLabel} key, retrying with backup key`);
+          continue;
+        }
+
+        console.error('TFL API fetch error:', error);
+        throw error;
+      }
+    }
+
+    if (lastError) {
+      console.error('TFL API fetch error:', lastError);
+      throw lastError;
+    }
+
+    throw new Error('TFL API request failed');
+  }
+
+  private getApiKeysInPriorityOrder(): (string | undefined)[] {
+    const keys: (string | undefined)[] = [];
+
+    if (this.primaryApiKey) {
+      keys.push(this.primaryApiKey);
+    }
+
+    if (this.secondaryApiKey) {
+      keys.push(this.secondaryApiKey);
+    }
+
+    if (keys.length === 0) {
+      keys.push(undefined);
+    }
+
+    return keys;
+  }
+
+  private shouldRetryWithNextKey(error: unknown, attemptIndex: number, totalKeys: number): boolean {
+    return attemptIndex < totalKeys - 1 && this.isRateLimitError(error);
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    if (!error) {
+      return false;
+    }
+
+    const maybeClientError = error as Partial<TflClientError>;
+
+    if (maybeClientError.isRateLimit) {
+      return true;
+    }
+
+    if (maybeClientError.status === 429) {
+      return true;
+    }
+
+    const message = (error as Error).message;
+    if (typeof message === 'string') {
+      const normalized = message.toLowerCase();
+      return (
+        normalized.includes('rate limit') ||
+        normalized.includes('too many requests') ||
+        normalized.includes('exceeded your quota') ||
+        normalized.includes('quota exceeded') ||
+        normalized.includes('over rate limit')
+      );
+    }
+
+    return false;
+  }
+
+  private isRateLimitResponse(status?: number, message?: string): boolean {
+    if (status === 429) {
+      return true;
+    }
+
+    if (!message) {
+      return false;
+    }
+
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('rate limit') ||
+      normalized.includes('too many requests') ||
+      normalized.includes('exceeded your quota') ||
+      normalized.includes('quota exceeded') ||
+      normalized.includes('over rate limit')
+    );
+  }
+
+  private async requestWithKey<T>(
+    endpoint: string,
+    params: Record<string, any> | undefined,
+    apiKey?: string
+  ): Promise<T> {
+    const url = this.buildUrl(endpoint, params, apiKey);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      throw await this.buildError(response);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  private async buildError(response: Response): Promise<TflClientError> {
+    const clonedResponse = response.clone();
+    let body: unknown = null;
+    let message: string | undefined;
 
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: this.headers,
-      });
+      const parsed = await clonedResponse.json();
+      body = parsed;
 
-      if (!response.ok) {
-        const error: TflApiError = await response.json();
-        throw new Error(error.message || `TFL API error: ${response.status}`);
+      if (parsed && typeof parsed === 'object' && 'message' in parsed && typeof (parsed as any).message === 'string') {
+        message = (parsed as any).message;
       }
-
-      return await response.json();
-    } catch (error) {
-      console.error('TFL API fetch error:', error);
-      throw error;
+    } catch {
+      try {
+        const text = await response.text();
+        if (text) {
+          body = text;
+          message = text;
+        }
+      } catch {
+        body = null;
+      }
     }
+
+    const errorMessage = message || `TFL API error: ${response.status}`;
+    const error: TflClientError = new Error(errorMessage);
+    error.status = response.status;
+    error.details = body;
+    error.isRateLimit = this.isRateLimitResponse(response.status, message);
+
+    return error;
   }
 
   // Journey Planning
@@ -151,16 +318,58 @@ class TFLApiClient {
 
   // Line Status
   async getLineStatus(modes?: string[]): Promise<LineStatus[]> {
-    let endpoint = '/Line/Mode';
-    
-    if (modes && modes.length > 0) {
-      endpoint += `/${modes.join(',')}/Status`;
-    } else {
-      // Get all modes
-      endpoint += '/tube,bus,dlr,overground,tram,river-bus,cable-car/Status';
-    }
+    const requestedModes = (modes && modes.length > 0 ? modes : DEFAULT_STATUS_MODES).map((mode) => mode.toLowerCase());
 
-    return this.fetchApi<LineStatus[]>(endpoint);
+    const bulkEndpoint = `/Line/Mode/${requestedModes.join(',')}/Status`;
+
+    try {
+      return await this.fetchApi<LineStatus[]>(bulkEndpoint);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
+      const shouldFallback = errorMessage.includes('string did not match the expected pattern');
+
+      if (!shouldFallback) {
+        throw error;
+      }
+
+      const aggregated: LineStatus[] = [];
+      const failedModes: string[] = [];
+
+      for (const mode of requestedModes) {
+        const variants = buildModeVariants(mode);
+        let succeeded = false;
+
+        for (const variant of variants) {
+          try {
+            const data = await this.fetchApi<LineStatus[]>(`/Line/Mode/${variant}/Status`);
+            aggregated.push(...data);
+            succeeded = true;
+            break;
+          } catch (variantError) {
+            const variantMessage = variantError instanceof Error ? variantError.message.toLowerCase() : '';
+
+            if (!variantMessage.includes('string did not match the expected pattern')) {
+              console.error('TFL API fetch error for mode variant', { mode, variant, error: variantError });
+              break;
+            }
+          }
+        }
+
+        if (!succeeded) {
+          failedModes.push(mode);
+        }
+      }
+
+      if (aggregated.length > 0) {
+        if (failedModes.length > 0) {
+          console.warn('TFL API status fallback skipped modes:', failedModes.join(', '));
+        }
+
+        return aggregated;
+      }
+
+      throw error;
+    }
   }
 
   // Get status for specific lines

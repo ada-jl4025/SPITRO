@@ -36,12 +36,16 @@ AZURE_TRANSCRIPTION_TARGET_URL=https://your-instance.openai.azure.com/openai/dep
 AZURE_API_KEY=
 
 # TFL API (optional - for higher rate limits)
+TFL_API_PRIMARY_KEY=
+TFL_API_SECONDARY_KEY=
 NEXT_PUBLIC_TFL_API_KEY=
 
 # Geocoding (Choose one: Google Maps or Mapbox)
 GEOCODING_API_KEY=
 GEOCODING_PROVIDER=google  # or 'mapbox'
 ```
+
+`TFL_API_PRIMARY_KEY` is used first for every request, and the application automatically falls back to `TFL_API_SECONDARY_KEY` when the primary key is rate limited. `NEXT_PUBLIC_TFL_API_KEY` remains supported for legacy setups but is optional when the primary key is configured.
 
 ### Getting API Keys
 
@@ -55,6 +59,7 @@ GEOCODING_PROVIDER=google  # or 'mapbox'
    - Register at [TFL API Portal](https://api-portal.tfl.gov.uk)
    - Most endpoints work without authentication
    - API key provides higher rate limits
+   - Configure the primary key in `TFL_API_PRIMARY_KEY` and the backup key in `TFL_API_SECONDARY_KEY`
 
 3. **Mapbox Geocoding** (Currently configured)
    - Sign up at [Mapbox](https://www.mapbox.com)

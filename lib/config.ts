@@ -10,7 +10,8 @@ export const config = {
   // TFL API Configuration
   tfl: {
     baseUrl: 'https://api.tfl.gov.uk',
-    apiKey: process.env.NEXT_PUBLIC_TFL_API_KEY || '',
+    primaryApiKey: process.env.TFL_API_PRIMARY_KEY || process.env.NEXT_PUBLIC_TFL_API_KEY || '',
+    secondaryApiKey: process.env.TFL_API_SECONDARY_KEY || '',
   },
   
   // Geocoding Configuration
