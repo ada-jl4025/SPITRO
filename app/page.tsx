@@ -31,7 +31,7 @@ export default function HomePage() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="h-14 rounded-full px-8 text-lg font-semibold">
-                  <Link href="https://github.com/ada-jl4025/SPITRO-London-Public-Transport-Planner-with-Natural-Language-Input" target="_blank" rel="noopener noreferrer">
+                  <Link href="https://github.com/ada-jl4025/SPITRO_London-Public-Transport-Planner-with-Natural-Language-Input" target="_blank" rel="noopener noreferrer">
                     View the code
                     <Github className="ml-2 h-5 w-5" aria-hidden="true" />
                   </Link>
