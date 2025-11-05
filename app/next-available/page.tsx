@@ -184,7 +184,7 @@ export default function NextAvailablePage() {
     filtersRef.current = { mode: selectedMode, search: normalizedSearch };
   }, [selectedMode, allStations, searchQuery]);
 
-  const topStations = useMemo(() => stations.slice(0, 8), [stations]);
+  const topStations = useMemo(() => stations.slice(0, 20), [stations]);
 
   const toggleExpand = async (stationId: string) => {
     const next = !expanded[stationId];
