@@ -6,11 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import { 
-  AlertCircle, 
-  CheckCircle, 
-  AlertTriangle,
-  XCircle,
+import {
   RefreshCw,
   Search,
   Train,
@@ -126,19 +122,6 @@ export function LineStatus() {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // Get status icon and color
-  const getStatusIcon = (severity: number) => {
-    if (severity >= 10) {
-      return <CheckCircle className="h-5 w-5 text-green-600" />;
-    } else if (severity >= 6) {
-      return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
-    } else if (severity >= 3) {
-      return <AlertCircle className="h-5 w-5 text-orange-600" />;
-    } else {
-      return <XCircle className="h-5 w-5 text-red-600" />;
-    }
-  };
-
   const getSeverityColor = (severity: number) => {
     if (severity >= 10) return 'border-green-600';
     if (severity >= 6) return 'border-yellow-600';
@@ -174,10 +157,7 @@ export function LineStatus() {
                 <TflBadge mode={line.modeName} lineIdOrName={line.id} size={32} ariaLabel={badgeAria} />
               </div>
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {getStatusIcon(line.severity)}
-                  <LineBadge idOrName={line.id} name={line.name} />
-                </div>
+                <LineBadge idOrName={line.id} name={line.name} />
                 <p className="text-xs text-muted-foreground capitalize">
                   {modeConfig[line.modeName as keyof typeof modeConfig]?.label || line.modeName}
                 </p>
