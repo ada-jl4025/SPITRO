@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { MapPin, Navigation, Clock, ChevronDown, ChevronUp, ExternalLink, Train, Bus as BusIcon, TramFront, Ship, Footprints } from 'lucide-react';
+import { MapPin, Navigation, Clock, ChevronDown, ChevronUp, ExternalLink, Train, Bus as BusIcon, TramFront, Ship, Footprints, Layers, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { getLineColor, getModeColor, getLineShortLabel } from '@/lib/line-colors';
 import { TflBadge } from '@/components/branding/tfl-badge';
@@ -36,6 +37,20 @@ type GroupedArrivals = Array<{
   }>;
 }>;
 
+const DEFAULT_RADIUS = 3000;
+
+const modeConfig = {
+  tube: { label: 'Underground', icon: Train },
+  bus: { label: 'Buses', icon: BusIcon },
+  dlr: { label: 'DLR', icon: Train },
+  overground: { label: 'Overground', icon: Train },
+  tram: { label: 'Tram', icon: TramFront },
+  'river-bus': { label: 'River Bus', icon: Ship },
+  'cable-car': { label: 'Cable Car', icon: Zap },
+} as const;
+
+type ModeKey = keyof typeof modeConfig;
+
 function formatEta(seconds: number): string {
   if (seconds < 30) return 'due';
   const mins = Math.round(seconds / 60);
@@ -58,6 +73,7 @@ export default function NextAvailablePage() {
   const [stations, setStations] = useState<NearbyStation[]>([]);
   const [fetchingStations, setFetchingStations] = useState(false);
   const [stationsError, setStationsError] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<'all' | ModeKey>('all');
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [arrivalsByStation, setArrivalsByStation] = useState<Record<string, GroupedArrivals>>({});
@@ -69,11 +85,25 @@ export default function NextAvailablePage() {
       if (!location) return;
       setFetchingStations(true);
       setStationsError(null);
+      setStations([]);
+      setExpanded({});
+      setArrivalsByStation({});
+      setArrivalsError({});
       try {
+        const payload: Record<string, unknown> = {
+          lat: location.latitude,
+          lon: location.longitude,
+          radius: DEFAULT_RADIUS,
+        };
+
+        if (selectedMode !== 'all') {
+          payload.modes = [selectedMode];
+        }
+
         const resp = await fetch('/api/stations/nearby', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: location.latitude, lon: location.longitude, radius: 1000 }),
+          body: JSON.stringify(payload),
         });
         const json = await resp.json();
         if (!resp.ok || json.status !== 'success') {
@@ -88,7 +118,7 @@ export default function NextAvailablePage() {
       }
     };
     loadNearby();
-  }, [location]);
+  }, [location, selectedMode]);
 
   const topStations = useMemo(() => stations.slice(0, 8), [stations]);
 
@@ -143,6 +173,33 @@ export default function NextAvailablePage() {
               <span className="text-sm text-destructive">{geoError.message}</span>
             )}
           </div>
+
+          <Tabs value={selectedMode} onValueChange={(value) => setSelectedMode(value as 'all' | ModeKey)} className="mt-8">
+            <TabsList className="w-full h-auto gap-2 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8" style={{ display: 'grid' }}>
+              <TabsTrigger value="all" className="group flex w-full items-center justify-center gap-2 py-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground/70">
+                  <Layers className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="hidden sm:inline">All</span>
+              </TabsTrigger>
+              {Object.entries(modeConfig).map(([key, config]) => {
+                const color = getModeColor(key);
+                const Icon = config.icon;
+                return (
+                  <TabsTrigger key={key} value={key} className="group flex w-full items-center justify-center gap-2 py-2">
+                    <span
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border"
+                      style={{ background: `${color.background}0D`, color: color.background, borderColor: `${color.background}33` }}
+                      title={config.label}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="hidden sm:inline">{config.label}</span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
 
           <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {fetchingStations && (
@@ -266,6 +323,7 @@ function ModeBadge({ mode }: { mode: string }) {
     if (m === 'bus') return BusIcon;
     if (m === 'tram') return TramFront;
     if (m === 'river-bus' || m === 'river' || m === 'waterbus') return Ship;
+    if (m === 'cable-car') return Zap;
     if (m === 'walking') return Footprints;
     // tube, dlr, overground, others
     return Train;

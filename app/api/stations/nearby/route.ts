@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { lat, lon, radius = 1000, modes, categories } = body;
+    const { lat, lon, radius = 3000, modes, categories } = body;
 
     // Validate coordinates
     if (typeof lat !== 'number' || typeof lon !== 'number') {
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const lat = parseFloat(searchParams.get('lat') || '');
   const lon = parseFloat(searchParams.get('lon') || '');
-  const radius = parseInt(searchParams.get('radius') || '1000', 10);
+  const radius = parseInt(searchParams.get('radius') || '3000', 10);
   const modes = searchParams.get('modes')?.split(',').filter(Boolean);
   const categories = searchParams.get('categories')?.split(',').filter(Boolean);
 
