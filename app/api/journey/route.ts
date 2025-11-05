@@ -12,6 +12,9 @@ import type {
   Prediction,
 } from '@/types/tfl';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 type LegEnhancements = {
   fromName?: string;
   toName?: string;

@@ -4,6 +4,9 @@ import { aiClient } from '@/lib/ai-client';
 import type { ApiResponse } from '@/types';
 import type { LineStatus, Prediction } from '@/types/tfl';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 const STOP_WORDS = ['status', 'line', 'lines', 'service', 'services', 'tube', 'train', 'bus', 'dlr', 'overground'];
 
 const cleanQuerySegment = (segment: string): string => {

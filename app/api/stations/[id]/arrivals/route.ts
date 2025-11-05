@@ -3,6 +3,9 @@ import { tflClient } from '@/lib/tfl-client';
 import type { ApiResponse } from '@/types';
 import type { Prediction } from '@/types/tfl';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 type GroupedArrivals = Array<{
   key: string;
   lineName: string;

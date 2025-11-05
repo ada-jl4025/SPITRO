@@ -3,6 +3,9 @@ import { aiClient } from '@/lib/ai-client';
 import type { ApiResponse } from '@/types';
 import type { NLPJourneyIntent } from '@/lib/schemas/nlp-response';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const { query } = await request.json();

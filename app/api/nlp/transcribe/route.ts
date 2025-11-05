@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { aiClient } from '@/lib/ai-client';
 
 export const runtime = 'nodejs';
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
 
 const LONDON_TRANSCRIPTION_PROMPT = `You are transcribing voice commands for Transport for London journey planning.
 Focus on accurately capturing London place names, station names, and landmarks.

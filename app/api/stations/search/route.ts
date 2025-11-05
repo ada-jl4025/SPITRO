@@ -3,6 +3,9 @@ import { tflClient } from '@/lib/tfl-client';
 import type { ApiResponse } from '@/types';
 import type { StopPoint } from '@/types/tfl';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
