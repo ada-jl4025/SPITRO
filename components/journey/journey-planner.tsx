@@ -475,7 +475,7 @@ export function JourneyPlanner() {
 
   return (
     <Card className="w-full max-w-3xl mx-auto border-0 shadow-xl bg-background/95 backdrop-blur-sm">
-      <CardContent className="pt-8 pb-8 px-6 md:px-8">
+      <CardContent className="pt-6 pb-6 px-4 md:pt-8 md:pb-8 md:px-8">
         {/* Input Mode Toggle - Larger & More Accessible */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
@@ -516,7 +516,7 @@ export function JourneyPlanner() {
                 value={naturalLanguageQuery}
                 onChange={(e) => setNaturalLanguageQuery(e.target.value)}
                 disabled={uiState.isLoading || isListening}
-                className="pr-28 h-14 text-lg border-2 focus-visible:border-tfl-blue transition-colors"
+                className="pr-24 h-12 text-base md:pr-28 md:h-14 md:text-lg border-2 focus-visible:border-tfl-blue transition-colors"
                 aria-label="Journey destination"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -564,8 +564,8 @@ export function JourneyPlanner() {
               </div>
             </div>
             
-            {/* Examples - Simplified */}
-            <div className="text-base text-muted-foreground bg-muted/50 rounded-lg p-4">
+            {/* Examples - Simplified (hidden on small screens) */}
+            <div className="hidden sm:block text-base text-muted-foreground bg-muted/50 rounded-lg p-4">
               <p className="font-medium mb-2 text-foreground">Try saying:</p>
               <ul className="space-y-1.5">
                 <li className="flex items-center gap-2">
@@ -608,10 +608,10 @@ export function JourneyPlanner() {
                     <Button
                       type="button"
                       variant="outline"
-                      size="lg"
+                      size="sm"
                       onClick={handleLocationRequest}
                       disabled={locationLoading}
-                      className="h-10 px-4 text-sm"
+                      className="h-9 px-3 text-sm"
                     >
                       <MapPin className="h-4 w-4 mr-2" />
                       Use my location
@@ -625,9 +625,27 @@ export function JourneyPlanner() {
                   disabled={uiState.isLoading}
                 />
               </div>
-              
-              <div className="relative">
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+              {/* Swap control: stacked on mobile, overlay on larger screens */}
+              <div className="md:relative">
+                {/* Mobile: centered swap button */}
+                <div className="md:hidden flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const temp = manualFrom;
+                      setManualFrom(manualTo);
+                      setManualTo(temp);
+                    }}
+                    className="h-9 px-3 rounded-full"
+                    aria-label="Swap stations"
+                  >
+                    <ArrowUpDown className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Desktop/Tablet: overlayed circular button */}
+                <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
                   <Button
                     type="button"
                     variant="outline"
@@ -660,7 +678,7 @@ export function JourneyPlanner() {
             
             <Button 
               type="submit" 
-              className="w-full h-14 text-lg font-semibold bg-tfl-blue hover:bg-tfl-blue/90"
+              className="w-full h-12 text-base md:h-14 md:text-lg font-semibold bg-tfl-blue hover:bg-tfl-blue/90"
               disabled={uiState.isLoading || !manualTo.trim()}
             >
               {uiState.isLoading ? (

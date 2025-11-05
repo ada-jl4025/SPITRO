@@ -45,14 +45,14 @@ export default function RootLayout({
           </a>
           <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm supports-[backdrop-filter]:bg-white/60">
             <div className="container">
-              <div className="flex items-center justify-between py-6 md:py-7">
+              <div className="flex items-center justify-between py-4 md:py-7">
                 {/* Brand */}
                 <Link
                   href="/"
                   className="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:rounded-xl"
                   aria-label="Spitro home"
                 >
-                  <span className="text-2xl font-semibold tracking-tight text-gray-900 transition-colors duration-200 group-hover:text-blue-600 md:text-3xl">
+                  <span className="text-xl font-semibold tracking-tight text-gray-900 transition-colors duration-200 group-hover:text-blue-600 md:text-3xl">
                     Spitro
                   </span>
                 </Link>
