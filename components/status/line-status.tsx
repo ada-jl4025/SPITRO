@@ -1,23 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import {
-  RefreshCw,
-  Search,
-  Train,
-  Bus,
-  TramFront,
-  Zap,
-  Layers
-} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { RefreshCw, Search, Train } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getLineColor, getModeColor, getLineShortLabel } from '@/lib/line-colors';
 import { TflBadge } from '@/components/branding/tfl-badge';
+import {
+  ALL_MODE_OPTION,
+  MODE_KEYS,
+  isSupportedMode,
+  normalizeModeSelection,
+  type ModeSelectionValue,
+  modeConfig,
+} from '@/lib/mode-config';
 
 interface LineStatusData {
   id: string;
@@ -53,73 +54,150 @@ interface StatusResponseData {
   matchedLineIds?: string[];
 }
 
-const modeConfig = {
-  tube: { label: 'Underground', icon: Train, color: 'bg-tfl-blue' },
-  bus: { label: 'Buses', icon: Bus, color: 'bg-tfl-red' },
-  dlr: { label: 'DLR', icon: Train, color: 'bg-teal-600' },
-  overground: { label: 'Overground', icon: Train, color: 'bg-orange-600' },
-  tram: { label: 'Tram', icon: TramFront, color: 'bg-green-600' },
-  'river-bus': { label: 'River Bus', icon: Bus, color: 'bg-blue-600' },
-  'cable-car': { label: 'Cable Car', icon: Zap, color: 'bg-purple-600' },
+interface LineStatusProps {
+  defaultMode?: string | null;
+}
+
+type FetchOptions = {
+  showRefreshing?: boolean;
+  modeOverride?: ModeSelectionValue;
+  queryOverride?: string;
 };
 
-export function LineStatus() {
+export function LineStatus({ defaultMode }: LineStatusProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const normalizedDefaultMode = useMemo(() => normalizeModeSelection(defaultMode), [defaultMode]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusData, setStatusData] = useState<StatusResponseData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMode, setSelectedMode] = useState('all');
+  const [selectedMode, setSelectedMode] = useState<ModeSelectionValue>(normalizedDefaultMode);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   
   const { toast } = useToast();
 
-  // Fetch status data
-  const fetchStatus = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) setRefreshing(true);
-    
-    try {
-      const params = new URLSearchParams();
-      if (searchQuery) {
-        params.append('q', searchQuery);
+  const selectedModeRef = useRef<ModeSelectionValue>(normalizedDefaultMode);
+  const searchQueryRef = useRef('');
+
+  const updateModeInUrl = useCallback(
+    (mode: ModeSelectionValue) => {
+      if (!pathname) return;
+
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+
+      if (mode === ALL_MODE_OPTION.value) {
+        params.delete('mode');
+      } else {
+        params.set('mode', mode);
       }
 
       const queryString = params.toString();
-      const url = queryString ? `/api/status?${queryString}` : '/api/status';
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+    },
+    [pathname, router, searchParams]
+  );
 
-      const response = await fetch(url);
-      const data = await response.json();
+  // Fetch status data
+  const fetchStatus = useCallback(
+    async ({ showRefreshing = false, modeOverride, queryOverride }: FetchOptions = {}) => {
+      const modeForRequest = modeOverride ?? selectedModeRef.current;
+      const queryForRequest = queryOverride ?? searchQueryRef.current;
 
-      if (data.status === 'success') {
-        setStatusData(data.data);
-        setLastUpdated(new Date());
-      } else {
-        throw new Error(data.error || 'Failed to fetch status');
+      if (!hasLoadedOnce) {
+        setLoading(true);
+      } else if (showRefreshing || modeOverride) {
+        setRefreshing(true);
       }
-    } catch (error) {
-      console.error('Status fetch error:', error);
-      toast({
-        title: "Error fetching status",
-        description: error instanceof Error ? error.message : "Please try again",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [searchQuery, toast]);
+
+      try {
+        const params = new URLSearchParams();
+        if (queryForRequest) {
+          params.set('q', queryForRequest);
+        }
+
+        if (modeForRequest && modeForRequest !== ALL_MODE_OPTION.value) {
+          params.set('mode', modeForRequest);
+        }
+
+        const queryString = params.toString();
+        const url = queryString ? `/api/status?${queryString}` : '/api/status';
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === 'success') {
+          setStatusData(data.data);
+          setLastUpdated(new Date());
+          if (!hasLoadedOnce) {
+            setHasLoadedOnce(true);
+          }
+        } else {
+          throw new Error(data.error || 'Failed to fetch status');
+        }
+      } catch (error) {
+        console.error('Status fetch error:', error);
+        toast({
+          title: 'Error fetching status',
+          description: error instanceof Error ? error.message : 'Please try again',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [hasLoadedOnce, toast]
+  );
 
   // Initial load
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
+  // Keep refs in sync
+  useEffect(() => {
+    selectedModeRef.current = selectedMode;
+  }, [selectedMode]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  // React to default mode changes from URL navigation
+  useEffect(() => {
+    if (selectedModeRef.current === normalizedDefaultMode) {
+      return;
+    }
+
+    selectedModeRef.current = normalizedDefaultMode;
+    setSelectedMode(normalizedDefaultMode);
+
+    fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: normalizedDefaultMode });
+  }, [normalizedDefaultMode, fetchStatus, hasLoadedOnce]);
+
+  // Debounced search updates
+  useEffect(() => {
+    if (!hasLoadedOnce) return;
+
+    const handle = window.setTimeout(() => {
+      fetchStatus({ showRefreshing: true });
+    }, 350);
+
+    return () => window.clearTimeout(handle);
+  }, [searchQuery, fetchStatus, hasLoadedOnce]);
+
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchStatus();
+    const interval = window.setInterval(() => {
+      fetchStatus({ showRefreshing: true });
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => window.clearInterval(interval);
   }, [fetchStatus]);
 
   const getSeverityColor = (severity: number) => {
@@ -130,9 +208,38 @@ export function LineStatus() {
   };
 
   // Render line status card
+  const modeOptions = useMemo(
+    () => [
+      {
+        value: ALL_MODE_OPTION.value,
+        label: ALL_MODE_OPTION.label,
+        icon: ALL_MODE_OPTION.icon,
+      },
+      ...MODE_KEYS.map((mode) => ({
+        value: mode as ModeSelectionValue,
+        label: modeConfig[mode].label,
+        icon: modeConfig[mode].icon,
+      })),
+    ],
+    []
+  );
+
   const matchedLineIds = new Set(statusData?.matchedLineIds ?? []);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const shouldUseMatchedResults = normalizedSearchQuery.length > 0 && matchedLineIds.size > 0;
+
+  const handleModeChange = useCallback(
+    (mode: ModeSelectionValue) => {
+      if (mode === selectedModeRef.current) return;
+
+      selectedModeRef.current = mode;
+      setSelectedMode(mode);
+      updateModeInUrl(mode);
+
+      fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: mode });
+    },
+    [fetchStatus, hasLoadedOnce, updateModeInUrl]
+  );
 
   const renderLineCard = (line: LineStatusData) => {
     const ModeIcon = modeConfig[line.modeName as keyof typeof modeConfig]?.icon || Train;
@@ -245,7 +352,7 @@ export function LineStatus() {
               type="text"
               placeholder="Search lines..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 w-[200px]"
             />
           </div>
@@ -253,7 +360,7 @@ export function LineStatus() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => fetchStatus(true)}
+          onClick={() => fetchStatus({ showRefreshing: true })}
             disabled={refreshing}
           >
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
@@ -261,103 +368,126 @@ export function LineStatus() {
         </div>
       </div>
 
-      {/* Mode tabs */}
-      <Tabs value={selectedMode} onValueChange={setSelectedMode} className="w-full">
-        <TabsList
-          className="w-full h-auto gap-2 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8"
-          style={{ display: 'grid' }}
-        >
-          <TabsTrigger value="all" className="group flex w-full items-center justify-center gap-2 py-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground/70">
-              <Layers className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <span className="hidden sm:inline">All</span>
-          </TabsTrigger>
-          {Object.entries(modeConfig).map(([key, config]) => {
-            const color = getModeColor(key);
-            return (
-              <TabsTrigger key={key} value={key} className="group flex w-full items-center justify-center gap-2 py-2">
-                <span
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border"
-                  style={{ background: `${color.background}0D`, color: color.background, borderColor: `${color.background}33` }}
-                  title={config.label}
-                >
-                  <config.icon className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <span className="hidden sm:inline">{config.label}</span>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+      <ModeFilter
+        options={modeOptions}
+        selected={selectedMode}
+        onSelect={handleModeChange}
+        disabled={refreshing && hasLoadedOnce}
+      />
 
-        <TabsContent value={selectedMode} className="mt-6">
-          {/* Overall status summary */}
-          {statusData?.modes && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
-              {statusData.modes
-                .filter((mode: ModeStatus) => selectedMode === 'all' || mode.mode === selectedMode)
-                .map((mode: ModeStatus) => {
-                  const config = modeConfig[mode.mode as keyof typeof modeConfig];
-                  if (!config) return null;
-                  
-                  return (
-                    <Card key={mode.mode}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <ModeBadge mode={mode.mode} label={config.label} />
-                          </div>
-                          <div className={cn(
-                            "h-3 w-3 rounded-full",
-                            mode.overallStatus === 'good' ? 'bg-green-600' : 'bg-red-600'
-                          )} />
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground">
-                          {mode.affectedLines.length === 0 
-                            ? `All ${mode.totalLines} lines running well`
-                            : `${mode.affectedLines.length} of ${mode.totalLines} lines affected`
-                          }
-                        </p>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-            </div>
-          )}
+      {statusData?.modes && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {statusData.modes
+            .filter((mode: ModeStatus) => selectedMode === ALL_MODE_OPTION.value || mode.mode === selectedMode)
+            .map((mode: ModeStatus) => {
+              const config = modeConfig[mode.mode as keyof typeof modeConfig];
+              if (!config) return null;
 
-          {/* Line details */}
-          {statusData?.lines && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Line Details</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                {statusData.lines
-                  .filter((line: LineStatusData) => {
-                    if (selectedMode !== 'all' && line.modeName !== selectedMode) {
-                      return false;
-                    }
+              return (
+                <Card key={mode.mode}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <ModeBadge mode={mode.mode} label={config.label} />
+                      </div>
+                      <div
+                        className={cn(
+                          'h-3 w-3 rounded-full',
+                          mode.overallStatus === 'good' ? 'bg-green-600' : 'bg-red-600'
+                        )}
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      {mode.affectedLines.length === 0
+                        ? `All ${mode.totalLines} lines running well`
+                        : `${mode.affectedLines.length} of ${mode.totalLines} lines affected`}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+        </div>
+      )}
 
-                    if (normalizedSearchQuery.length === 0) {
-                      return true;
-                    }
+      {statusData?.lines && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-lg">Line Details</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            {statusData.lines
+              .filter((line: LineStatusData) => {
+                if (selectedMode !== ALL_MODE_OPTION.value && line.modeName !== selectedMode) {
+                  return false;
+                }
 
-                    if (shouldUseMatchedResults) {
-                      return matchedLineIds.has(line.id);
-                    }
+                if (normalizedSearchQuery.length === 0) {
+                  return true;
+                }
 
-                    const normalizedName = line.name.toLowerCase();
-                    return (
-                      normalizedName.includes(normalizedSearchQuery) ||
-                      `${normalizedName} line`.includes(normalizedSearchQuery)
-                    );
-                  })
-                  .map(renderLineCard)}
-              </div>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+                if (shouldUseMatchedResults) {
+                  return matchedLineIds.has(line.id);
+                }
+
+                const normalizedName = line.name.toLowerCase();
+                return (
+                  normalizedName.includes(normalizedSearchQuery) ||
+                  `${normalizedName} line`.includes(normalizedSearchQuery)
+                );
+              })
+              .map(renderLineCard)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ModeFilterProps {
+  options: Array<{ value: ModeSelectionValue; label: string; icon: LucideIcon }>;
+  selected: ModeSelectionValue;
+  onSelect: (value: ModeSelectionValue) => void;
+  disabled?: boolean;
+}
+
+function ModeFilter({ options, selected, onSelect, disabled }: ModeFilterProps) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/60 p-4 shadow-sm">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transport mode</p>
+        <p className="text-sm text-muted-foreground/80">Choose a network to focus the live status feed.</p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {options.map((option) => {
+          const Icon = option.icon;
+          const isActive = option.value === selected;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSelect(option.value)}
+              disabled={disabled && !isActive}
+              className={cn(
+                'flex items-center justify-start gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70',
+                isActive
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                  : 'border-border/70 bg-white hover:border-primary/40 hover:bg-primary/5'
+              )}
+            >
+              <span
+                className={cn(
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full border',
+                  isActive ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-muted-foreground'
+                )}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className="text-left">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
