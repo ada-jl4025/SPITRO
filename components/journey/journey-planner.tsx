@@ -792,9 +792,6 @@ export function JourneyPlanner() {
             )}
             
             {/* Quick Examples */}
-            <div className="text-center">
-              <p className="text-muted-foreground mb-3">Try: "To King's Cross" or "From Paddington to Heathrow"</p>
-            </div>
           </form>
         ) : (
           /* Manual Station Selection */
