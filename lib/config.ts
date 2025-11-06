@@ -12,6 +12,11 @@ export const config = {
     baseUrl: 'https://api.tfl.gov.uk',
     primaryApiKey: process.env.TFL_API_PRIMARY_KEY || process.env.NEXT_PUBLIC_TFL_API_KEY || '',
     secondaryApiKey: process.env.TFL_API_SECONDARY_KEY || '',
+    // Optional: comma-separated list of keys, highest priority first
+    apiKeys: (process.env.TFL_API_KEYS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
   },
   
   // National Rail (live departures) Configuration

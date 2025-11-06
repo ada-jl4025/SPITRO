@@ -37,18 +37,30 @@ interface TflClientError extends Error {
   status?: number;
   isRateLimit?: boolean;
   details?: unknown;
+  retryAfterMs?: number;
 }
 
 class TFLApiClient {
   private baseUrl: string;
-  private primaryApiKey?: string;
-  private secondaryApiKey?: string;
+  private apiKeys: string[];
+  private rateLimitCooldowns: Map<string, number>;
+  private roundRobinIndex: number;
   private headers: HeadersInit;
 
   constructor() {
     this.baseUrl = config.tfl.baseUrl;
-    this.primaryApiKey = config.tfl.primaryApiKey || undefined;
-    this.secondaryApiKey = config.tfl.secondaryApiKey || undefined;
+    // Prefer explicit list if provided; otherwise fall back to primary/secondary
+    const configuredKeys = Array.isArray((config as any).tfl.apiKeys)
+      ? (config as any).tfl.apiKeys as string[]
+      : [];
+    const legacyKeys = [config.tfl.primaryApiKey, config.tfl.secondaryApiKey].filter(
+      (k): k is string => !!k && k.length > 0
+    );
+    this.apiKeys = (configuredKeys.length > 0 ? configuredKeys : legacyKeys).filter(
+      (k, idx, arr) => arr.indexOf(k) === idx
+    );
+    this.rateLimitCooldowns = new Map();
+    this.roundRobinIndex = 0;
     this.headers = {
       'Content-Type': 'application/json',
     };
@@ -85,9 +97,21 @@ class TFLApiClient {
       const apiKey = apiKeys[index];
 
       try {
-        return await this.requestWithKey<T>(endpoint, params, apiKey);
+        const result = await this.requestWithKey<T>(endpoint, params, apiKey);
+        // Advance round-robin only when we successfully used a real key
+        if (apiKey) {
+          this.roundRobinIndex = (this.roundRobinIndex + 1) % Math.max(this.apiKeys.length, 1);
+        }
+        return result;
       } catch (error) {
         lastError = error;
+
+        // If rate-limited on a specific key, mark it as cooling down
+        if (apiKey && this.isRateLimitError(error)) {
+          const retryAfterMs = (error as Partial<TflClientError>).retryAfterMs;
+          const cooldownMs = typeof retryAfterMs === 'number' && retryAfterMs > 0 ? retryAfterMs : 60_000;
+          this.rateLimitCooldowns.set(apiKey, Date.now() + cooldownMs);
+        }
 
         const shouldRetry = this.shouldRetryWithNextKey(error, index, apiKeys.length);
         if (shouldRetry) {
@@ -110,21 +134,28 @@ class TFLApiClient {
   }
 
   private getApiKeysInPriorityOrder(): (string | undefined)[] {
-    const keys: (string | undefined)[] = [];
+    const now = Date.now();
+    const usableKeys: string[] = [];
 
-    if (this.primaryApiKey) {
-      keys.push(this.primaryApiKey);
+    if (this.apiKeys.length > 0) {
+      // Build a rotated view for round-robin starting point
+      for (let i = 0; i < this.apiKeys.length; i++) {
+        const idx = (this.roundRobinIndex + i) % this.apiKeys.length;
+        const key = this.apiKeys[idx];
+        const cooldownUntil = this.rateLimitCooldowns.get(key) || 0;
+        if (cooldownUntil <= now) {
+          usableKeys.push(key);
+        }
+      }
     }
 
-    if (this.secondaryApiKey) {
-      keys.push(this.secondaryApiKey);
+    // If no configured keys or all are cooling down, include undefined (no key) as a last resort
+    if (usableKeys.length === 0) {
+      return [undefined];
     }
 
-    if (keys.length === 0) {
-      keys.push(undefined);
-    }
-
-    return keys;
+    // Try configured usable keys first, then consider no-key as very last fallback
+    return [...usableKeys, undefined];
   }
 
   private shouldRetryWithNextKey(error: unknown, attemptIndex: number, totalKeys: number): boolean {
@@ -203,6 +234,7 @@ class TFLApiClient {
     const clonedResponse = response.clone();
     let body: unknown = null;
     let message: string | undefined;
+    let retryAfterMs: number | undefined;
 
     try {
       const parsed = await clonedResponse.json();
@@ -223,11 +255,28 @@ class TFLApiClient {
       }
     }
 
+    // Parse Retry-After header when present (seconds or HTTP-date)
+    const retryAfterRaw = response.headers.get('retry-after');
+    if (retryAfterRaw) {
+      const seconds = Number(retryAfterRaw);
+      if (!Number.isNaN(seconds)) {
+        retryAfterMs = Math.max(0, seconds) * 1000;
+      } else {
+        const dateMs = Date.parse(retryAfterRaw);
+        if (!Number.isNaN(dateMs)) {
+          retryAfterMs = Math.max(0, dateMs - Date.now());
+        }
+      }
+    }
+
     const errorMessage = message || `TFL API error: ${response.status}`;
     const error: TflClientError = new Error(errorMessage);
     error.status = response.status;
     error.details = body;
     error.isRateLimit = this.isRateLimitResponse(response.status, message);
+    if (retryAfterMs !== undefined) {
+      error.retryAfterMs = retryAfterMs;
+    }
 
     return error;
   }

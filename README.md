@@ -79,13 +79,16 @@ AZURE_API_KEY=
 TFL_API_PRIMARY_KEY=
 TFL_API_SECONDARY_KEY=
 NEXT_PUBLIC_TFL_API_KEY=
+# Alternatively, provide a prioritized comma-separated list (uses round-robin + auto-fallback)
+# Example: TFL_API_KEYS=keyA,keyB,keyC
+TFL_API_KEYS=
 
 # Geocoding (Choose one: Google Maps or Mapbox)
 GEOCODING_API_KEY=
 GEOCODING_PROVIDER=google  # or 'mapbox'
 ```
 
-`TFL_API_PRIMARY_KEY` is used first for every request, and the application automatically falls back to `TFL_API_SECONDARY_KEY` when the primary key is rate limited. `NEXT_PUBLIC_TFL_API_KEY` remains supported for legacy setups but is optional when the primary key is configured.
+`TFL_API_PRIMARY_KEY` is used first for every request, and the application automatically falls back to `TFL_API_SECONDARY_KEY` when the primary key is rate limited. For multiple keys, set `TFL_API_KEYS` with a comma-separated list. The app rotates keys to spread load and, on a 429/limit, seamlessly retries with the next key (respecting any `Retry-After` header). `NEXT_PUBLIC_TFL_API_KEY` remains supported for legacy setups but is optional when the primary key is configured.
 
 ### Getting API Keys
 
@@ -98,8 +101,8 @@ GEOCODING_PROVIDER=google  # or 'mapbox'
 2. **TFL API** (Optional)
    - Register at [TFL API Portal](https://api-portal.tfl.gov.uk)
    - Most endpoints work without authentication
-   - API key provides higher rate limits
-   - Configure the primary key in `TFL_API_PRIMARY_KEY` and the backup key in `TFL_API_SECONDARY_KEY`
+- API key provides higher rate limits
+- Configure `TFL_API_KEYS` with multiple keys (preferred) or use `TFL_API_PRIMARY_KEY` and `TFL_API_SECONDARY_KEY`
 
 3. **Mapbox Geocoding** (Currently configured)
    - Sign up at [Mapbox](https://www.mapbox.com)
