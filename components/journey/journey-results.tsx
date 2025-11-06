@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -16,6 +16,7 @@ import {
   Clock,
   Route,
   RefreshCw,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getLineColor, getModeColor, getLineShortLabel } from '@/lib/line-colors';
@@ -27,8 +28,10 @@ interface JourneyResultsProps {
   toName?: string;
   onClose?: () => void;
   onSelectJourney?: (journey: any) => void;
-  onRefresh?: () => void;
-  refreshing?: boolean;
+  onRefreshLive?: () => void;
+  refreshingLive?: boolean;
+  onRefreshFull?: () => void;
+  refreshingFull?: boolean;
 }
 
 const modeIcons: Record<string, LucideIcon> = {
@@ -48,22 +51,25 @@ export function JourneyResults({
   toName,
   onClose,
   onSelectJourney,
-  onRefresh,
-  refreshing,
+  onRefreshLive,
+  refreshingLive,
+  onRefreshFull,
+  refreshingFull,
 }: JourneyResultsProps) {
+  const [showAll, setShowAll] = useState(false);
   // Auto-refresh next departures every 15 seconds
   useEffect(() => {
-    if (!onRefresh) return;
+    if (!onRefreshLive) return;
     const intervalId = setInterval(() => {
       // Avoid firing when tab is hidden and avoid overlapping refreshes
       if (typeof document !== 'undefined' && (document as any).hidden) return;
-      if (!refreshing) {
-        onRefresh();
+      if (!refreshingLive) {
+        onRefreshLive();
       }
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [onRefresh, refreshing]);
+  }, [onRefreshLive, refreshingLive]);
 
   // Format duration
   const formatDuration = (minutes: number): string => {
@@ -82,6 +88,24 @@ export function JourneyResults({
       hour: '2-digit', 
       minute: '2-digit' 
     });
+  };
+
+  // Prefer start/end timestamps to compute total journey time, including waits and interchanges
+  const computeJourneyDurationMinutes = (journey: any): number => {
+    try {
+      const start = journey.startDateTime || journey.legs?.[0]?.departureTime;
+      const end = journey.arrivalDateTime || journey.legs?.[journey.legs.length - 1]?.arrivalTime;
+      if (start && end) {
+        const ms = new Date(end).getTime() - new Date(start).getTime();
+        if (Number.isFinite(ms) && ms > 0) return Math.round(ms / 60000);
+      }
+    } catch {}
+    // Fallbacks: sum leg durations or use provided duration
+    if (Array.isArray(journey.legs) && journey.legs.length > 0) {
+      const sum = journey.legs.reduce((acc: number, leg: any) => acc + (Number(leg?.duration) || 0), 0);
+      if (sum > 0) return sum;
+    }
+    return Number(journey.duration) || 0;
   };
 
   const formatMinutesFromSeconds = (seconds: number): string => {
@@ -282,6 +306,23 @@ export function JourneyResults({
         );
       }
 
+      if (mode === 'national-rail') {
+        return (
+          <div
+            className="relative flex h-11 w-11 items-center justify-center rounded-full bg-white"
+            role="img"
+            aria-label="National Rail"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="18" viewBox="0 0 62 39">
+              <g stroke="#ED1C24" fill="none">
+                <path d="M1,-8.9 46,12.4 16,26.6 61,47.9" strokeWidth="6"/>
+                <path d="M0,12.4H62m0,14.2H0" strokeWidth="6.4"/>
+              </g>
+            </svg>
+          </div>
+        );
+      }
+
       return (
         <TflBadge
           mode={mode}
@@ -311,10 +352,11 @@ export function JourneyResults({
             <div className="flex-1 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold capitalize">
-                    {isWalking ? `Walk ${durationLabel}` : routeOption?.name || leg.mode.name}
-                  </p>
-                  {!isWalking && (
+                  {isWalking ? (
+                    <p className="text-sm font-semibold capitalize">Walk {durationLabel}</p>
+                  ) : mode === 'national-rail' ? (
+                    <NationalRailLineBadge name={routeOption?.name || leg.mode.name} />
+                  ) : (
                     <LineBadge idOrName={rawLineIdentifier} name={routeOption?.name || leg.mode.name} />
                   )}
                 </div>
@@ -448,7 +490,7 @@ export function JourneyResults({
                 {formatTime(journey.startDateTime)} - {formatTime(journey.arrivalDateTime)}
               </CardTitle>
               <CardDescription className="text-base">
-                Duration: <span className="font-semibold">{formatDuration(journey.duration)}</span>
+                Duration: <span className="font-semibold">{formatDuration(computeJourneyDurationMinutes(journey))}</span>
                 {journey.fare && (
                   <span className="ml-3 font-semibold text-foreground">
                     £{(journey.fare.totalCost / 100).toFixed(2)}
@@ -531,15 +573,15 @@ export function JourneyResults({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {onRefresh && (
+          {onRefreshFull && (
             <Button
               variant="outline"
               size="icon"
-              onClick={onRefresh}
-              disabled={refreshing}
+              onClick={onRefreshFull}
+              disabled={refreshingFull}
               aria-label="Refresh journey"
             >
-              <RefreshCw className={cn('h-5 w-5', refreshing && 'animate-spin')} aria-hidden="true" />
+              <RefreshCw className={cn('h-5 w-5', refreshingFull && 'animate-spin')} aria-hidden="true" />
               <span className="sr-only">Refresh journey results</span>
             </Button>
           )}
@@ -552,15 +594,20 @@ export function JourneyResults({
       </div>
 
       {/* Journey cards */}
-      <div className="space-y-3">
-        {journeys.slice(0, 3).map((journey, index) => renderJourneyCard(journey, index))}
+      <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+        {(showAll ? journeys : journeys.slice(0, 3)).map((journey, index) => renderJourneyCard(journey, index))}
       </div>
 
       {/* More options */}
       {journeys.length > 3 && (
         <div className="text-center pt-2">
-          <Button variant="outline" size="lg" className="h-12 px-6">
-            Show {journeys.length - 3} more options
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-12 px-6"
+            onClick={() => setShowAll((prev) => !prev)}
+          >
+            {showAll ? 'Show fewer options' : `Show ${journeys.length - 3} more options`}
           </Button>
         </div>
       )}
@@ -581,3 +628,20 @@ function LineBadge({ idOrName, name }: { idOrName: string; name: string }) {
     </span>
   );
 }
+function NationalRailLineBadge({ name }: { name?: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap max-w-[160px] truncate bg-white border border-gray-200"
+      title={name || 'National Rail'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="10" viewBox="0 0 62 39" aria-hidden="true">
+        <g stroke="#ED1C24" fill="none">
+          <path d="M1,-8.9 46,12.4 16,26.6 61,47.9" strokeWidth="6"/>
+          <path d="M0,12.4H62m0,14.2H0" strokeWidth="6.4"/>
+        </g>
+      </svg>
+      <span className="text-gray-900">{name || 'National Rail'}</span>
+    </span>
+  );
+}
+

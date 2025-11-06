@@ -33,11 +33,14 @@ export interface JourneyPreferences {
   modes?: TransportMode[];
   accessibility?: AccessibilityOption[];
   maxWalkingMinutes?: number;
+  maxTransferMinutes?: number;
   avoidStations?: string[];
   avoidLines?: string[];
+  walkingSpeed?: 'slow' | 'average' | 'fast';
+  journeyPreference?: 'least-time' | 'least-interchange' | 'least-walking';
 }
 
-export type TransportMode = 'tube' | 'bus' | 'dlr' | 'overground' | 'tram' | 'river-bus' | 'cable-car' | 'coach' | 'walking' | 'cycle';
+export type TransportMode = 'tube' | 'bus' | 'dlr' | 'overground' | 'tram' | 'river-bus' | 'cable-car' | 'coach' | 'walking' | 'cycle' | 'national-rail';
 
 export type AccessibilityOption = 'step-free-platform' | 'step-free-vehicle' | 'wheelchair' | 'audio-announcements' | 'visual-displays';
 

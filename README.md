@@ -25,6 +25,46 @@ Spitro is a modern, accessible journey planning platform for London's public tra
 - **APIs**: TFL Unified API, Azure OpenAI, Geocoding services
 - **Deployment**: Vercel
 
+## National Rail Live Departures (Optional)
+
+You can enrich National Rail legs with live “Next departures” and platform info.
+
+### Server-side Configuration
+
+We support either a REST bridge or OpenLDBWS SOAP. Configure one of the following in your `.env.local` (server-only values; never expose tokens client-side):
+
+```bash
+# Turn on National Rail enrichment
+NR_API_ENABLED=true
+
+# Option A: REST bridge/proxy (preferred if you have one)
+NR_API_BASE_URL=https://your-rest-bridge.example.com
+NR_API_KEY=your-rest-api-key
+NR_API_HEADER_NAME=x-api-key # optional
+
+# Option B: OpenLDBWS SOAP (official)
+NR_LDBWS_URL=https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb11.asmx
+NR_LDBWS_TOKEN=your-ldbws-token
+# These default to current versions, override only if needed:
+NR_LDBWS_NS=http://thalesgroup.com/RTTI/2017-10-01/ldb/
+NR_LDBWS_COMMON_NS=http://thalesgroup.com/RTTI/2017-10-01/ldb/commontypes
+```
+
+Notes:
+- If `NR_API_ENABLED=true`, the app will use the REST bridge when `NR_API_BASE_URL` and `NR_API_KEY` are provided; otherwise it will use OpenLDBWS with `NR_LDBWS_URL` and `NR_LDBWS_TOKEN`.
+- CRS codes are extracted from TfL `StopPoint` data (via `icsCode` or additional properties). If CRS is missing for a leg, NR fetch is skipped gracefully.
+- No NR credentials are ever sent to the browser; all calls are server-side.
+
+### Install dependency
+
+The SOAP option uses a lightweight XML parser:
+
+```bash
+npm install
+```
+
+This ensures `fast-xml-parser` is installed from `package.json`.
+
 ## Environment Variables
 
 Create a `.env` file in the root directory with the following variables:
@@ -261,6 +301,36 @@ To test the application locally:
    - Test keyboard navigation
    - Try voice input (Chrome/Edge)
    - Check screen reader compatibility
+
+## LLM → Mapbox → TfL Pipeline (Preferences Preserved)
+
+This app supports natural language journey planning with a strict pipeline that preserves user preferences end‑to‑end:
+
+1) LLM parsing (Azure OpenAI)
+- Extracts: from/to/via, modes, accessibility, time (arrive/depart), walkingSpeed, journeyPreference, maxWalkingMinutes, maxTransferMinutes.
+- “only” vs “prefer”: when the user says “tube only …” we restrict modes; otherwise we prefer the listed modes but allow others.
+
+2) Location resolution (TfL StopPoint → Mapbox/Google fallback)
+- We first try TfL StopPoint search for named places; if none are found, we geocode with Mapbox (or Google) and use coordinates.
+- Resolving locations never drops preferences.
+
+3) TfL Journey Planner
+- We pass all preferences directly to `/Journey/JourneyResults/{from}/to/{to}` as query params:
+  - mode (comma-separated), accessibilityPreference, journeyPreference, walkingSpeed,
+    maxWalkingMinutes, maxTransferMinutes, date, time, timeIs, via, viaName, alternativeRoute.
+- Results are optionally reordered to prefer mentioned modes when not “only”.
+
+Quick local E2E check
+
+```bash
+# Start prod server (example)
+npm run build && npm run start -p 3556
+
+# Example: bus-only query
+curl -s -X POST http://localhost:3556/api/journey \
+  -H 'Content-Type: application/json' \
+  -d '{"naturalLanguageQuery":"Bus only from Clapham Junction to Waterloo"}' | jq '.data.journeys[0].legs[].mode.id'
+```
 
 ## Troubleshooting
 

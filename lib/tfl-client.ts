@@ -297,9 +297,23 @@ class TFLApiClient {
   // Get arrivals for multiple stop points
   async getMultipleArrivals(stopPointIds: string[]): Promise<Prediction[]> {
     if (stopPointIds.length === 0) return [];
-    
+    // Some TFL deployments accept comma-separated stopPoint IDs; if that fails, batch sequentially
     const ids = stopPointIds.join(',');
-    return this.fetchApi<Prediction[]>(`/StopPoint/${ids}/Arrivals`);
+    try {
+      return await this.fetchApi<Prediction[]>(`/StopPoint/${ids}/Arrivals`);
+    } catch (e) {
+      // Fallback: aggregate per-stop arrivals
+      const results: Prediction[] = [];
+      for (const id of stopPointIds) {
+        try {
+          const arr = await this.getArrivals(id);
+          results.push(...arr);
+        } catch (inner) {
+          // continue on individual failure
+        }
+      }
+      return results;
+    }
   }
 
   // Get arrivals for specific lines

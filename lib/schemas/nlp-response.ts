@@ -19,10 +19,16 @@ export interface TimePreference {
 }
 
 export interface JourneyPreferences {
-  mode?: string[]; // ["tube", "bus", "dlr", "overground", "tram", "river-bus"]
-  accessibility?: string[]; // ["step-free", "wheelchair", "audio", "visual"]
+  mode?: string[]; // ["tube", "bus", "dlr", "overground", "tram", "river-bus", "walking", "national-rail"]
+  accessibility?: string[]; // ["step-free-platform", "step-free-vehicle", "wheelchair", "audio", "visual"]
   avoid?: string[]; // Stations or lines to avoid
   time?: TimePreference;
+  walkingSpeed?: 'slow' | 'average' | 'fast';
+  journeyPreference?: 'least-time' | 'least-interchange' | 'least-walking';
+  maxWalkingMinutes?: number;
+  maxTransferMinutes?: number;
+  // How to treat listed modes: "only" to restrict strictly; "prefer" to bias results but allow others
+  modePolicy?: 'only' | 'prefer';
 }
 
 export interface JourneyInfo {
@@ -81,7 +87,19 @@ export function isValidTimeType(type: string): type is "depart" | "arrive" {
 }
 
 export function isValidTransportMode(mode: string): boolean {
-  const validModes = ["tube", "bus", "dlr", "overground", "tram", "river-bus", "cable-car", "coach"];
+  const validModes = [
+    "tube",
+    "bus",
+    "dlr",
+    "overground",
+    "tram",
+    "river-bus",
+    "cable-car",
+    "coach",
+    "walking",
+    "national-rail",
+    "cycle"
+  ];
   return validModes.includes(mode.toLowerCase());
 }
 
@@ -124,8 +142,13 @@ interface NLPJourneyIntent {
       confidence: number;
     }>;
     preferences?: {
-      mode?: string[]; // ["tube", "bus", "dlr", "overground", "tram", "river-bus"]
-      accessibility?: string[]; // ["step-free", "wheelchair", "audio", "visual"]
+      mode?: string[]; // ["tube", "bus", "dlr", "overground", "tram", "river-bus", "walking", "national-rail"]
+      accessibility?: string[]; // ["step-free-platform", "step-free-vehicle", "wheelchair", "audio", "visual"]
+      walkingSpeed?: 'slow' | 'average' | 'fast';
+      journeyPreference?: 'least-time' | 'least-interchange' | 'least-walking';
+      maxWalkingMinutes?: number;
+      maxTransferMinutes?: number;
+      modePolicy?: 'only' | 'prefer';
       avoid?: string[];
       time?: {
         type: "depart" | "arrive";
@@ -151,4 +174,24 @@ Rules:
 5. For status queries, extract specific line names or stations
 6. Always include the original query in rawQuery
 7. If a location appears abbreviated, expand it to its most likely full London location name
-8. Return ONLY valid JSON, no additional text`;
+8. Interpret transport modes and accessibility precisely:
+   - If the query says "X only" (or synonyms: just, strictly, exclusively, nothing but), set journey.preferences.mode to ONLY those modes and set modePolicy = "only".
+   - If one or more modes are mentioned without "only" (e.g., prefer/ideally/if possible), set journey.preferences.mode to the mentioned modes and set modePolicy = "prefer".
+   - Allowed mode values: ["tube","bus","dlr","overground","tram","river-bus","walking","national-rail"].
+   - Map synonyms: "underground"/"subway"/"metro" → "tube"; "river bus"/"riverbus"/"thames clippers" → "river-bus"; "national rail"/"NR" → "national-rail"; "walk"/"on foot" → "walking".
+   - If the query mentions accessibility "step-free to platform", include "step-free-platform" in journey.preferences.accessibility.
+   - If it mentions "step-free to vehicle", include "step-free-vehicle" in journey.preferences.accessibility.
+9. Include additional preferences when present: walkingSpeed (slow/average/fast), journeyPreference (least-time/least-interchange/least-walking), maxWalkingMinutes, maxTransferMinutes.
+10. When a time is specified, include { time: { type, datetime }} with ISO 8601 datetime.
+11. Support one optional via station in journey.via (first only if multiple are mentioned).
+12. Return ONLY valid JSON, no additional text
+
+Examples (inputs → key fields):
+- "Tube only from Canary Wharf to Oxford Circus" → { journey: { from: {name:"Canary Wharf"}, to: {name:"Oxford Circus"}, preferences: { mode: ["tube"], modePolicy: "only" } } }
+- "Bus and DLR only from Greenwich to Lewisham" → { journey: { preferences: { mode: ["bus","dlr"], modePolicy: "only" } } }
+- "Prefer bus from Clapham Junction to Waterloo" → { journey: { preferences: { mode: ["bus"], modePolicy: "prefer" } } }
+- "Step-free to platform from Victoria to Westminster" → { journey: { preferences: { accessibility: ["step-free-platform"] } } }
+- "Step-free to vehicle from Euston to Bank" → { journey: { preferences: { accessibility: ["step-free-vehicle"] } } }
+- "National Rail from Clapham Junction to Waterloo" → { journey: { preferences: { mode: ["national-rail"] } } }
+- "Walking only from Hammersmith to Shepherd's Bush" → { journey: { preferences: { mode: ["walking"] } } }
+- "From Holborn to Liverpool Street via Farringdon" → { journey: { via: [{name:"Farringdon"}] } }`;

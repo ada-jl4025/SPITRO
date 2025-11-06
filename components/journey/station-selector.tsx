@@ -168,7 +168,7 @@ export function StationSelector({
       )}
       
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground" />
         <Input
           ref={inputRef}
           type="text"
@@ -181,7 +181,7 @@ export function StationSelector({
           placeholder={placeholder}
           disabled={disabled}
           autoFocus={autoFocus}
-          className="pl-11 pr-4 border-2 focus-visible:border-tfl-blue"
+          className="pl-12 pr-4 h-14 text-xl border-3 border-border focus-visible:border-tfl-blue focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label="Station search"
           aria-expanded={isOpen}
           aria-controls="station-results"
@@ -202,7 +202,7 @@ export function StationSelector({
         <div
           ref={dropdownRef}
           id="station-results"
-          className="absolute z-50 w-full mt-2 bg-background border-2 rounded-lg shadow-xl max-h-72 overflow-auto"
+          className="absolute z-50 w-full mt-3 bg-background border-3 border-border rounded-xl shadow-lg max-h-96 overflow-auto animate-in fade-in slide-in-from-top-2 duration-200"
           role="listbox"
         >
           {results.map((station, index) => (
@@ -213,25 +213,26 @@ export function StationSelector({
               onClick={() => selectStation(station)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={cn(
-                "w-full px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground transition-colors",
-                "flex items-center justify-between text-base",
-                selectedIndex === index && "bg-accent text-accent-foreground"
+                "w-full px-6 py-5 text-left hover:bg-muted border-b border-border/50 last:border-b-0 transition-all duration-200",
+                "flex items-center justify-between text-lg",
+                selectedIndex === index && "bg-muted",
+                "hover:shadow-sm"
               )}
               role="option"
               aria-selected={selectedIndex === index}
             >
-              <div className="flex items-center space-x-3 flex-1">
-                <MapPin className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <div className="flex items-center space-x-4 flex-1">
+                <MapPin className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{station.name}</div>
+                  <div className="font-semibold text-xl">{station.name}</div>
                   {station.zone && (
-                    <div className="text-sm text-muted-foreground">Zone {station.zone}</div>
+                    <div className="text-lg text-muted-foreground">Zone {station.zone}</div>
                   )}
                 </div>
               </div>
-              
+
               {/* Transport mode badges */}
-              <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+              <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                 {station.modes?.map((mode: string) => (
                   <ModeBadge key={mode} mode={mode} />
                 ))}
@@ -248,8 +249,8 @@ function ModeBadge({ mode }: { mode: string }) {
   const color = getModeColor(mode);
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs border"
-      style={{ background: `${color.background}0D`, color: color.background, borderColor: `${color.background}33` }}
+      className="inline-flex items-center rounded-lg px-3 py-1 text-sm font-medium border-2"
+      style={{ background: `${color.background}20`, color: color.background, borderColor: `${color.background}40` }}
       title={mode}
     >
       {mode}

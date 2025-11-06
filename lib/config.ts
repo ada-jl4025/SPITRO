@@ -14,6 +14,23 @@ export const config = {
     secondaryApiKey: process.env.TFL_API_SECONDARY_KEY || '',
   },
   
+  // National Rail (live departures) Configuration
+  nationalRail: {
+    // For example, OpenLDBWS/GBR-RDG bridge or your proxy. Keep server-side only.
+    baseUrl: process.env.NR_API_BASE_URL || '',
+    apiKey: process.env.NR_API_KEY || '',
+    enabled: process.env.NR_API_ENABLED === 'true',
+    // Optional: if your provider requires a separate token or header name
+    apiHeaderName: process.env.NR_API_HEADER_NAME || 'x-api-key',
+    // OpenLDBWS SOAP (alternative to REST):
+    ldbwsUrl: process.env.NR_LDBWS_URL || '',
+    ldbwsToken: process.env.NR_LDBWS_TOKEN || '',
+    // SOAPAction base namespace (defaults to 2017-10-01/ldb)
+    ldbwsNamespace: process.env.NR_LDBWS_NS || 'http://thalesgroup.com/RTTI/2017-10-01/ldb/',
+    ldbwsCommonNamespace:
+      process.env.NR_LDBWS_COMMON_NS || 'http://thalesgroup.com/RTTI/2017-10-01/ldb/commontypes',
+  },
+  
   // Geocoding Configuration
   geocoding: {
     apiKey: process.env.GEOCODING_API_KEY || '',
@@ -65,6 +82,15 @@ export function validateConfig() {
   if (!config.supabase.url) errors.push('NEXT_PUBLIC_SUPABASE_URL is required')
   if (!config.supabase.anonKey) errors.push('NEXT_PUBLIC_SUPABASE_ANON_KEY is required')
   
+  // National Rail config is optional; validate softly only when enabled
+  if (config.nationalRail.enabled) {
+    const hasRest = !!config.nationalRail.baseUrl && !!config.nationalRail.apiKey
+    const hasSoap = !!config.nationalRail.ldbwsUrl && !!config.nationalRail.ldbwsToken
+    if (!hasRest && !hasSoap) {
+      errors.push('Configure either REST (NR_API_BASE_URL + NR_API_KEY) or OpenLDBWS (NR_LDBWS_URL + NR_LDBWS_TOKEN) when NR_API_ENABLED=true')
+    }
+  }
+
   if (errors.length > 0) {
     console.error('Configuration errors:', errors)
     if (process.env.NODE_ENV === 'production') {
