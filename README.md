@@ -184,6 +184,17 @@ Allow location access to automatically find the nearest station as your starting
 - Method: GET
 - Query params: `mode` (tube, bus, dlr, overground)
 
+#### Auto-fetch cadence and caching
+
+- A dedicated cron job hits `/api/status/refresh` every 30 seconds using the `TFL_API_KEYS_AUTOFETCH` key rotation list. Each run stores a fresh snapshot in the Supabase table `service_status_snapshots`.
+- When `/api/status` is called, the API returns the most recent snapshot as long as it is not older than 2 minutes.
+- If the latest snapshot is older than 2 minutes, the API triggers an on-demand refresh (still using `TFL_API_KEYS_AUTOFETCH`), re-reads Supabase, and only falls back to a direct TfL fetch if no newer data is available. The direct fetch is persisted back into Supabase for subsequent requests.
+- Ensure `TFL_API_KEYS_AUTOFETCH` is configured as a comma-separated list of TfL API keys in the server environment.
+
+- Endpoint: `/api/status/refresh`
+  - Method: GET
+  - Purpose: background/cron ingestion to keep Supabase snapshots within 30 seconds of the latest TfL data.
+
 ### Station Search
 - Endpoint: `/api/stations/search`
 - Method: GET

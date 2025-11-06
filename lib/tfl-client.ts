@@ -47,12 +47,12 @@ class TFLApiClient {
   private roundRobinIndex: number;
   private headers: HeadersInit;
 
-  constructor() {
+  constructor(apiKeysOverride?: string[]) {
     this.baseUrl = config.tfl.baseUrl;
     // Prefer explicit list if provided; otherwise fall back to primary/secondary
-    const configuredKeys = Array.isArray((config as any).tfl.apiKeys)
-      ? (config as any).tfl.apiKeys as string[]
-      : [];
+    const configuredKeys = Array.isArray(apiKeysOverride)
+      ? (apiKeysOverride as string[])
+      : (Array.isArray((config as any).tfl.apiKeys) ? ((config as any).tfl.apiKeys as string[]) : []);
     const legacyKeys = [config.tfl.primaryApiKey, config.tfl.secondaryApiKey].filter(
       (k): k is string => !!k && k.length > 0
     );

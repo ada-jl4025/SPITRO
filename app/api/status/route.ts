@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tflClient } from '@/lib/tfl-client';
+import { getServiceSupabase } from '@/lib/supabase-server';
+import {
+  getLatestStatusSnapshot,
+  isSnapshotFresh,
+  refreshStatusSnapshot,
+  type StatusSnapshot,
+} from '@/lib/service-status-snapshots';
 import { aiClient } from '@/lib/ai-client';
 import type { ApiResponse } from '@/types';
 import type { LineStatus, Prediction } from '@/types/tfl';
@@ -119,7 +126,47 @@ export async function GET(request: NextRequest) {
     const lines = searchParams.get('lines')?.split(',').filter(Boolean);
     const query = searchParams.get('q'); // Natural language query
 
-    const allLineStatuses = await tflClient.getLineStatus();
+    const supabase = getServiceSupabase();
+    const maxSnapshotAgeMs = 2 * 60 * 1000;
+
+    let snapshot: StatusSnapshot | null = null;
+    try {
+      snapshot = await getLatestStatusSnapshot(supabase);
+    } catch (error) {
+      console.error('Failed to read status snapshot:', error);
+    }
+
+    let allLineStatuses: LineStatus[];
+
+    if (isSnapshotFresh(snapshot, maxSnapshotAgeMs)) {
+      allLineStatuses = (snapshot as StatusSnapshot).payload;
+    } else {
+      try {
+        await refreshStatusSnapshot({
+          supabaseClient: supabase,
+          source: 'manual-refresh',
+          useAutofetchKeys: true,
+        });
+        snapshot = await getLatestStatusSnapshot(supabase);
+      } catch (error) {
+        console.error('Status snapshot refresh error:', error);
+      }
+
+      if (isSnapshotFresh(snapshot, maxSnapshotAgeMs)) {
+        allLineStatuses = (snapshot as StatusSnapshot).payload;
+      } else {
+        allLineStatuses = await tflClient.getLineStatus();
+        try {
+          await supabase.from('service_status_snapshots').insert({
+            payload: allLineStatuses,
+            source: 'live',
+            valid_at: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error('Failed to persist live status snapshot:', error);
+        }
+      }
+    }
     const modeSet = modes && modes.length > 0 ? new Set(modes) : null;
     const lineSet = lines && lines.length > 0 ? new Set(lines.map((line) => line.toLowerCase())) : null;
 

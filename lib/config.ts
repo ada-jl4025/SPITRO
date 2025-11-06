@@ -17,6 +17,11 @@ export const config = {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
+    // Server-side only: keys used by scheduled autofetch job
+    autofetchApiKeys: (process.env.TFL_API_KEYS_AUTOFETCH || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
   },
   
   // National Rail (live departures) Configuration
