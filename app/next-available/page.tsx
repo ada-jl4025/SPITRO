@@ -47,6 +47,7 @@ type GroupedArrivals = Array<{
 }>;
 
 const DEFAULT_RADIUS = 3000;
+const PAGE_SIZE = 10;
 
 function formatEta(seconds: number): string {
   if (seconds < 30) return 'due';
@@ -81,6 +82,7 @@ export default function NextAvailablePage() {
   const [allStations, setAllStations] = useState<NearbyStation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [arrivalsByStation, setArrivalsByStation] = useState<Record<string, GroupedArrivals>>({});
@@ -90,6 +92,7 @@ export default function NextAvailablePage() {
     mode: normalizeModeSelection(modeParam),
     search: '',
   });
+  const previousAllStationsLength = useRef<number>(0);
   const searchAreaRef = useRef<HTMLDivElement | null>(null);
   const prevModeParamRef = useRef<string | null>(null);
 
@@ -201,6 +204,7 @@ export default function NextAvailablePage() {
         throw new Error(json.error || 'Failed to fetch nearby stations');
       }
       setAllStations(json.data.stations as NearbyStation[]);
+      setVisibleCount(PAGE_SIZE);
     } catch (e) {
       setStationsError((e as Error).message);
       if (clearExisting) {
@@ -245,6 +249,15 @@ export default function NextAvailablePage() {
       });
     }
 
+    const filtersChanged =
+      filtersRef.current.mode !== selectedMode || filtersRef.current.search !== normalizedSearch;
+
+    const allStationsChanged = previousAllStationsLength.current !== allStations.length;
+
+    if (filtersChanged || allStationsChanged) {
+      setVisibleCount(PAGE_SIZE);
+    }
+
     setStations(filtered);
 
     if (
@@ -257,9 +270,15 @@ export default function NextAvailablePage() {
     }
 
     filtersRef.current = { mode: selectedMode, search: normalizedSearch };
+    previousAllStationsLength.current = allStations.length;
   }, [selectedMode, allStations, searchQuery]);
 
-  const topStations = useMemo(() => stations.slice(0, 20), [stations]);
+  const displayedStations = useMemo(() => stations.slice(0, visibleCount), [stations, visibleCount]);
+  const hasMoreStations = visibleCount < stations.length;
+
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((current) => Math.min(current + PAGE_SIZE, stations.length));
+  }, [stations.length]);
 
   const toggleExpand = async (stationId: string) => {
     const next = !expanded[stationId];
@@ -361,7 +380,7 @@ export default function NextAvailablePage() {
               </Card>
             )}
 
-            {!fetchingStations && !stationsError && topStations.map((s) => {
+            {!fetchingStations && !stationsError && displayedStations.map((s) => {
               const isOpen = !!expanded[s.id];
               const gmaps = location ? googleWalkingUrl(location.latitude, location.longitude, s.lat, s.lon) : undefined;
               return (
@@ -456,6 +475,13 @@ export default function NextAvailablePage() {
               );
             })}
           </div>
+          {hasMoreStations && !fetchingStations && !stationsError && (
+            <div className="mt-6 flex justify-center">
+              <Button onClick={handleLoadMore} variant="outline">
+                Load more
+              </Button>
+            </div>
+          )}
         </div>
       </section>
     </div>

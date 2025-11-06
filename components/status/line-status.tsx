@@ -51,12 +51,6 @@ interface StatusResponseData {
   lines: LineStatusData[];
   groupedByMode: Record<string, LineStatusData[]>;
   matchedLineIds?: string[];
-  totalLineCount: number;
-  pagination: {
-    offset: number;
-    limit: number;
-    returned: number;
-  };
 }
 
 interface LineStatusProps {
@@ -67,13 +61,7 @@ type FetchOptions = {
   showRefreshing?: boolean;
   modeOverride?: ModeSelectionValue;
   queryOverride?: string;
-  append?: boolean;
-  offsetOverride?: number;
-  limitOverride?: number;
-  reset?: boolean;
 };
-
-const DEFAULT_PAGE_SIZE = 10;
 
 export function LineStatus({ defaultMode }: LineStatusProps) {
   const router = useRouter();
@@ -89,13 +77,11 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
   const [selectedMode, setSelectedMode] = useState<ModeSelectionValue>(normalizedDefaultMode);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   
   const { toast } = useToast();
 
   const selectedModeRef = useRef<ModeSelectionValue>(normalizedDefaultMode);
   const searchQueryRef = useRef('');
-  const linesRef = useRef<LineStatusData[]>([]);
 
   const updateModeInUrl = useCallback(
     (mode: ModeSelectionValue) => {
@@ -121,37 +107,13 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
       showRefreshing = false,
       modeOverride,
       queryOverride,
-      append = false,
-      offsetOverride,
-      limitOverride,
-      reset = false,
     }: FetchOptions = {}) => {
       const modeForRequest = modeOverride ?? selectedModeRef.current;
       const queryForRequest = queryOverride ?? searchQueryRef.current;
 
-      if (reset) {
-        linesRef.current = [];
-        setStatusData((prev) => (prev ? { ...prev, lines: [] } : prev));
-      }
-
-      const previousLines = linesRef.current;
-      const calculatedOffset = append
-        ? offsetOverride ?? previousLines.length
-        : reset
-        ? 0
-        : offsetOverride ?? 0;
-      const minimumLimit = previousLines.length > 0 ? previousLines.length : DEFAULT_PAGE_SIZE;
-      const calculatedLimit = append
-        ? limitOverride ?? DEFAULT_PAGE_SIZE
-        : reset
-        ? limitOverride ?? DEFAULT_PAGE_SIZE
-        : limitOverride ?? minimumLimit;
-
       if (!hasLoadedOnce) {
         setLoading(true);
-      } else if (append) {
-        setLoadingMore(true);
-      } else if (showRefreshing || modeOverride || queryOverride !== undefined || reset) {
+      } else if (showRefreshing || modeOverride || queryOverride !== undefined) {
         setRefreshing(true);
       }
 
@@ -165,13 +127,6 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
           params.set('mode', modeForRequest);
         }
 
-        const safeLimit = Math.max(1, calculatedLimit);
-        params.set('limit', safeLimit.toString());
-
-        if (calculatedOffset > 0) {
-          params.set('offset', Math.max(0, calculatedOffset).toString());
-        }
-
       const queryString = params.toString();
       const url = queryString ? `/api/status?${queryString}` : '/api/status';
 
@@ -179,26 +134,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
       const data = await response.json();
 
       if (data.status === 'success') {
-          const incomingLines: LineStatusData[] = data.data.lines ?? [];
-          const combinedLines = append
-            ? (() => {
-                const seen = new Set<string>();
-                return [...previousLines, ...incomingLines].filter((line) => {
-                  if (seen.has(line.id)) {
-                    return false;
-                  }
-                  seen.add(line.id);
-                  return true;
-                });
-              })()
-            : incomingLines;
-
-          linesRef.current = combinedLines;
-
-          setStatusData({
-            ...data.data,
-            lines: combinedLines,
-          });
+          setStatusData(data.data);
         setLastUpdated(new Date());
           if (!hasLoadedOnce) {
             setHasLoadedOnce(true);
@@ -216,7 +152,6 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setLoadingMore(false);
     }
     },
     [hasLoadedOnce, toast]
@@ -224,7 +159,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
 
   // Initial load
   useEffect(() => {
-    fetchStatus({ reset: true });
+    fetchStatus();
   }, [fetchStatus]);
 
   // Keep refs in sync
@@ -245,7 +180,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
     selectedModeRef.current = normalizedDefaultMode;
     setSelectedMode(normalizedDefaultMode);
 
-    fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: normalizedDefaultMode, reset: true });
+    fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: normalizedDefaultMode });
   }, [normalizedDefaultMode, fetchStatus, hasLoadedOnce]);
 
   // Debounced search updates
@@ -253,7 +188,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
     if (!hasLoadedOnce) return;
 
     const handle = window.setTimeout(() => {
-      fetchStatus({ showRefreshing: true, reset: true });
+      fetchStatus({ showRefreshing: true });
     }, 350);
 
     return () => window.clearTimeout(handle);
@@ -295,9 +230,6 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
   const matchedLineIds = new Set(statusData?.matchedLineIds ?? []);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const shouldUseMatchedResults = normalizedSearchQuery.length > 0 && matchedLineIds.size > 0;
-  const totalLineCount = statusData?.totalLineCount ?? 0;
-  const loadedLineCount = statusData?.lines.length ?? 0;
-  const hasMore = loadedLineCount < totalLineCount;
 
   const handleModeChange = useCallback(
     (mode: ModeSelectionValue) => {
@@ -307,7 +239,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
       setSelectedMode(mode);
       updateModeInUrl(mode);
 
-      fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: mode, reset: true });
+      fetchStatus({ showRefreshing: hasLoadedOnce, modeOverride: mode });
     },
     [fetchStatus, hasLoadedOnce, updateModeInUrl]
   );
@@ -443,7 +375,7 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
         options={modeOptions}
         selected={selectedMode}
         onSelect={handleModeChange}
-        disabled={(refreshing && hasLoadedOnce) || loadingMore}
+        disabled={refreshing && hasLoadedOnce}
       />
 
           {statusData?.modes && (
@@ -508,13 +440,6 @@ export function LineStatus({ defaultMode }: LineStatusProps) {
                   })
                   .map(renderLineCard)}
               </div>
-              {hasMore && (
-                <div className="flex justify-center pt-2">
-                  <Button onClick={() => fetchStatus({ append: true })} disabled={loadingMore}>
-                    {loadingMore ? 'Loading...' : 'Load more'}
-                  </Button>
-                </div>
-              )}
             </div>
           )}
     </div>
