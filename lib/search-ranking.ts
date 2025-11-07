@@ -92,7 +92,7 @@ const computePriority = (
     return 3;
   }
 
-  const lowerName = metadata.stop.commonName.toLowerCase();
+  const lowerName = (metadata.stop.commonName || '').toLowerCase();
   if (lowerName.startsWith(queryLower)) return 4;
   if (lowerName.includes(queryLower)) return 5;
 
