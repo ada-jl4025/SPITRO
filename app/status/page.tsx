@@ -1,17 +1,23 @@
+import { Suspense } from 'react';
 import { LineStatus } from '@/components/status/line-status';
 
 interface StatusPageProps {
-  searchParams?: {
+  searchParams?: Promise<{
     mode?: string | string[];
-  };
+  }>;
 }
 
-export default function StatusPage({ searchParams }: StatusPageProps) {
-  const modeParam = Array.isArray(searchParams?.mode) ? searchParams?.mode[0] : searchParams?.mode;
+export default async function StatusPage({ searchParams }: StatusPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const modeParam = Array.isArray(resolvedSearchParams.mode)
+    ? resolvedSearchParams.mode[0]
+    : resolvedSearchParams.mode;
 
   return (
     <div className="container py-8 md:py-12">
-      <LineStatus defaultMode={modeParam ?? null} />
+      <Suspense fallback={<div className="text-sm text-muted-foreground">Loading status…</div>}>
+        <LineStatus defaultMode={modeParam ?? null} />
+      </Suspense>
     </div>
   );
 }

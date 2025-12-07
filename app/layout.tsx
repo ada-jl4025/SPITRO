@@ -1,4 +1,5 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -21,11 +22,12 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 }
 
 export default function RootLayout({
@@ -58,7 +60,13 @@ export default function RootLayout({
                 </Link>
 
                 {/* Navigation */}
-                <MainNav />
+                <Suspense
+                  fallback={
+                    <div className="h-10 w-24" aria-hidden="true" />
+                  }
+                >
+                  <MainNav />
+                </Suspense>
               </div>
             </div>
           </header>

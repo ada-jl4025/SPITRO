@@ -64,10 +64,10 @@ function groupArrivals(predictions: Prediction[]): GroupedArrivals {
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const stopPointId = context.params.id;
+    const { id: stopPointId } = (await params) ?? {};
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '0', 10);
     const grouped = (searchParams.get('grouped') || 'true') === 'true';

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MapPin, Navigation, Clock, ChevronDown, ChevronUp, ExternalLink, Train, Bus as BusIcon, TramFront, Ship, Footprints, Zap, Search, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,14 @@ function googleWalkingUrl(originLat: number, originLon: number, destLat: number,
 }
 
 export default function NextAvailablePage() {
+  return (
+    <Suspense fallback={<div className="container py-12">Loading nearby departures…</div>}>
+      <NextAvailableContent />
+    </Suspense>
+  );
+}
+
+function NextAvailableContent() {
   const { location, loading: geoLoading, error: geoError, requestLocation, isSupported } = useGeolocation({ autoRequest: true, enableHighAccuracy: true, timeout: 10000 });
 
   const router = useRouter();

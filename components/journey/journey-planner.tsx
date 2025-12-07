@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,6 +13,19 @@ import { MapPin, Mic, MicOff, Send, Loader2, ArrowRight } from 'lucide-react';
 import type { UIState, JourneySearchParams, TransportMode } from '@/types';
 
 const MAX_RECENT_HISTORY_ITEMS = 15;
+
+const EXAMPLE_PLACEHOLDERS: string[] = [
+  "From Paddington to King's Cross",
+  'From Stratford to Waterloo via London Bridge',
+  'Step-free to platform from Victoria to Westminster',
+  'Step-free to vehicle from Euston to Bank',
+  'Tube only from Canary Wharf to Oxford Circus',
+  'Bus and DLR only from Greenwich to Lewisham',
+  'National Rail from Clapham Junction to Waterloo',
+  "Walking only from Hammersmith to Shepherd's Bush",
+  'Overground and tube only from Whitechapel to Canada Water',
+  'From Holborn to Liverpool Street via Farringdon',
+];
 
 export function JourneyPlanner() {
   const [uiState, setUiState] = useState<UIState>({
@@ -33,19 +46,6 @@ export function JourneyPlanner() {
   const [hasMounted, setHasMounted] = useState(false);
   const isManualMode = uiState.inputMode === 'manual-selection';
 
-  // Rotating placeholder examples for supported instructions
-  const EXAMPLE_PLACEHOLDERS: string[] = [
-    "From Paddington to King's Cross",
-    'From Stratford to Waterloo via London Bridge',
-    'Step-free to platform from Victoria to Westminster',
-    'Step-free to vehicle from Euston to Bank',
-    'Tube only from Canary Wharf to Oxford Circus',
-    'Bus and DLR only from Greenwich to Lewisham',
-    'National Rail from Clapham Junction to Waterloo',
-    'Walking only from Hammersmith to Shepherd\'s Bush',
-    'Overground and tube only from Whitechapel to Canada Water',
-    'From Holborn to Liverpool Street via Farringdon',
-  ];
   const [displayExampleIdx, setDisplayExampleIdx] = useState<number>(0);
   const [exampleFading, setExampleFading] = useState<boolean>(false);
   useEffect(() => {
@@ -210,6 +210,9 @@ export function JourneyPlanner() {
     }
   };
 
+  const executeJourneyRef = useRef(executeJourney);
+  executeJourneyRef.current = executeJourney;
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
@@ -251,18 +254,18 @@ export function JourneyPlanner() {
     await executeJourney(searchParams);
   };
 
-  const handleJourneyRefresh = async () => {
+  const handleJourneyRefresh = useCallback(async () => {
     if (!lastSearchParamsRef.current) {
       return;
     }
 
     setIsRefreshingJourney(true);
     try {
-      await executeJourney(lastSearchParamsRef.current, true);
+      await executeJourneyRef.current(lastSearchParamsRef.current, true);
     } finally {
       setIsRefreshingJourney(false);
     }
-  };
+  }, []);
 
   const refreshLiveDepartures = async () => {
     if (!journeyResults) return;
@@ -348,7 +351,7 @@ export function JourneyPlanner() {
       void handleJourneyRefresh();
     }, 180000);
     return () => clearInterval(id);
-  }, [isRefreshingJourney]);
+  }, [isRefreshingJourney, handleJourneyRefresh]);
 
   // Handle voice input
   const stopVoiceRecording = () => {
